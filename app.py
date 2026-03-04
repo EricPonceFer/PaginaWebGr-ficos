@@ -2,7 +2,10 @@ import streamlit as st
 from core.data_loader import load_file, procesar_por_operador
 from core.validator import validate_columns
 from core.chart_factory import create_chart
-
+import plotly.graph_objects as go
+import locale
+from datetime import datetime
+from plotly.subplots import make_subplots
 
 def configure_page():
     """Configura la página."""
@@ -22,62 +25,104 @@ def render_preview(df):
 
 
 def render_chart_controls(df):
-    x_axis, y_axis = procesar_por_operador(
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        fecha_seleccionada = st.date_input(
+            "Selecciona la fecha",
+            value=datetime.today()
+        )
+
+    with col2:
+        chart_type = st.selectbox(
+            "Tipo de gráfica",
+            ["Línea", "Barra", "Dispersión"]
+        )
+
+    # 🔹 Extraer año, mes y día
+    anio = fecha_seleccionada.year
+    mes = fecha_seleccionada.month
+    dia = fecha_seleccionada.day
+
+    # 🔹 Pasar esos valores a tu función
+    data_dia, data_mes, data_anio = procesar_por_operador(
         df,
-        columna_operador="Código",
-        columna_anio="Año",
-        columna_mes="Mes",
-        columna_dia="Día",
-        fecha_inicio="2023-01-01",
-        fecha_fin="2026-12-31"
-    )
-    chart_type = st.selectbox(
-        "Tipo de gráfica",
-        ["Línea", "Barra", "Dispersión"]
+        anio,
+        mes,
+        dia
     )
 
-    return x_axis, y_axis, chart_type
+    return data_dia, data_mes, data_anio, chart_type
 
-import streamlit as st
+def render_chart(data_dia, data_mes, data_anio,chart_type):
+    # 🔹 Selector múltiple de operadores
+    operadores = data_anio["Código"].unique().tolist()
 
-def render_chart(chart_type, x_axis, y_axis):
-    """Genera, filtra y muestra la gráfica."""
-
-    # 🔹 Obtener valores únicos ordenados
-    opciones = sorted(set(x_axis))
-
-    # 🔹 Selector múltiple
     seleccion = st.multiselect(
         "Selecciona operador(es)",
-        options=opciones,
-        default=opciones  # por defecto todos
+        options=operadores,
+        default=operadores
     )
+    # 🔹 Selector de vista
+    col1, col2 = st.columns([1, 10]) 
+    with col1:
+        st.markdown("""
+        <style>
+        .vertical-center {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;  /* centra vertical */
+            height: 100%;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+
+        st.markdown('<div class="vertical-center">', unsafe_allow_html=True)
+
+        modo = st.radio(
+            "Selecciona vista:",
+            ["Día", "Mes", "Año"],
+            horizontal=False
+        )
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # 🔹 Selección dinámica del DataFrame
+    if modo == "Día":
+        df = data_dia.copy()
+        horas_objetivo = 8  # puedes cambiarlo
+
+    elif modo == "Mes":
+        df = data_mes.copy()
+        horas_objetivo = 160  # ejemplo: 22 días laborales
+
+    else:
+        df = data_anio.copy()
+        horas_objetivo = 1920  # ejemplo anual
+
+    if df.empty:
+        st.warning("No hay datos para mostrar")
+        return
 
     if not seleccion:
         st.warning("Selecciona al menos un operador")
         return
 
-    # 🔹 Filtrar datos según selección
-    datos_filtrados = [
-        (x, y) for x, y in zip(x_axis, y_axis)
-        if x in seleccion
-    ]
+    df = df[df["Código"].isin(seleccion)]
 
-    x_filtrado, y_filtrado = zip(*datos_filtrados)
 
-    # Crear figura
-    fig = create_chart(chart_type, list(x_filtrado), list(y_filtrado))
-
-    fig.update_layout(
-        xaxis_type="category",
-        xaxis_title="Operador",
-        yaxis_title="Días Trabajados"
-    )
-
-    st.plotly_chart(fig, use_container_width=True)
+    # 🔹 Crear gráfico
+    fig = create_chart(chart_type   , df,horas_objetivo)
+    with col2:
+        st.plotly_chart(fig, use_container_width=True)
 
 
 def main():
+    try:
+        locale.setlocale(locale.LC_TIME, 'Spanish_Spain')
+    except:
+        pass
     configure_page()
 
     uploaded_file = render_uploader()
@@ -87,11 +132,10 @@ def main():
             df = load_file(uploaded_file)
 
             render_preview(df)
+ 
+            data_dia, data_mes, data_anio, chart_type  = render_chart_controls(df)
 
-            x_axis, y_axis, chart_type = render_chart_controls(df)
-
-            # 🔥 Renderizar siempre (sin botón)
-            render_chart(chart_type, x_axis, y_axis)
+            render_chart(data_dia,data_mes,data_anio, chart_type )
 
         except Exception as e:
             st.error(str(e))

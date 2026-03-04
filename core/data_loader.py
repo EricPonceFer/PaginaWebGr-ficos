@@ -1,8 +1,5 @@
 import pandas as pd
 import streamlit as st
-
-import pandas as pd
-import streamlit as st
 import os
 
 @st.cache_data
@@ -28,93 +25,85 @@ def load_file(file):
     except Exception as e:
         raise ValueError(f"Error al leer el archivo: {e}")
 
-import pandas as pd
+def calcular_planta(df):
+    total_row = pd.DataFrame({
+        "Código": ["PLANTA"],
+        "Horas_trabajadas": [df["Horas_trabajadas"].sum()]
+    })
 
-def procesar_por_operador(
-    df,
-    columna_operador,
-    columna_anio,
-    columna_mes,
-    columna_dia,
-    fecha_inicio,
-    fecha_fin
-):
-    """
-    Construye fecha desde año/mes/día,
-    filtra por rango y devuelve:
-    x_axis -> códigos de operador (como string ID)
-    y_axis -> días trabajados
-    """
+    return pd.concat([df, total_row], ignore_index=True)
+
+
+def procesar_por_operador(df, anio, mes, dia):
 
     try:
-        # Validar columnas
         columnas_requeridas = [
-            columna_operador,
-            columna_anio,
-            columna_mes,
-            columna_dia
+            "Código",
+            "Año",
+            "Mes",
+            "Día",
+            "Horas_trabajadas"
         ]
 
         for col in columnas_requeridas:
             if col not in df.columns:
                 raise ValueError(f"La columna '{col}' no existe en el DataFrame")
 
-        # Trabajar sobre copia
         df_temp = df.copy()
 
-        # 🔹 Forzar código como STRING tipo ID
-        df_temp[columna_operador] = (
-            df_temp[columna_operador]
+        # Código como string
+        df_temp["Código"] = (
+            df_temp["Código"]
             .astype(str)
             .str.strip()
         )
 
-        # 🔹 Crear fecha combinada
-        df_temp["fecha_temp"] = pd.to_datetime(
-            dict(
-                year=df_temp[columna_anio],
-                month=df_temp[columna_mes],
-                day=df_temp[columna_dia]
-            ),
-            errors="coerce"
+        # 🔹 Convertir horas a número (si vienen tipo HH:MM)
+        df_temp['Horas_trabajadas'] = pd.to_timedelta(
+            df_temp['Horas_trabajadas'] + ':00'
         )
 
-        # Validar rango de fechas
-        fecha_inicio = pd.to_datetime(fecha_inicio)
-        fecha_fin = pd.to_datetime(fecha_fin)
+        df_temp['Horas_trabajadas'] = (
+            df_temp['Horas_trabajadas'].dt.total_seconds() / 3600
+        )
 
-        if fecha_inicio > fecha_fin:
-            raise ValueError("La fecha inicio no puede ser mayor que fecha fin")
-
-        # 🔹 Filtrar por rango
-        df_filtrado = df_temp.loc[
-            (df_temp["fecha_temp"] >= fecha_inicio) &
-            (df_temp["fecha_temp"] <= fecha_fin)
-        ].dropna(subset=["fecha_temp", columna_operador])
-
-        if df_filtrado.empty:
-            return [], []
-
-        # 🔹 Contar días únicos trabajados
-        df_filtrado["fecha_temp"] = df_filtrado["fecha_temp"].dt.date
-
-        resultado = (
-            df_filtrado
-            .groupby(columna_operador)["fecha_temp"]
-            .nunique()
+        # 🔹 HORAS DEL DÍA SELECCIONADO
+        horas_dia = (
+            df_temp[
+                (df_temp["Año"] == anio) &
+                (df_temp["Mes"] == mes) &
+                (df_temp["Día"] == dia)
+            ]
+            .groupby("Código")["Horas_trabajadas"]
+            .sum()
             .reset_index()
         )
 
-        # Ordenar de mayor a menor
-        resultado = resultado.sort_values(by="fecha_temp", ascending=False)
 
-        # 🔹 Convertir operador explícitamente a string (seguridad extra)
-        resultado[columna_operador] = resultado[columna_operador].astype(str)
+        # 🔹 HORAS DEL MES SELECCIONADO
+        horas_mes = (
+            df_temp[
+                (df_temp["Año"] == anio) &
+                (df_temp["Mes"] == mes)
+            ]
+            .groupby("Código")["Horas_trabajadas"]
+            .sum()
+            .reset_index()
+        )
 
-        x_axis = resultado[columna_operador].tolist()
-        y_axis = resultado["fecha_temp"].tolist()
-
-        return x_axis, y_axis
+        # 🔹 HORAS DEL AÑO SELECCIONADO
+        horas_anio = (
+            df_temp[
+                (df_temp["Año"] == anio)
+            ]
+            .groupby("Código")["Horas_trabajadas"]
+            .sum()
+            .reset_index()
+        )
+        horas_dia = calcular_planta(horas_dia)
+        horas_mes = calcular_planta(horas_mes)
+        horas_anio = calcular_planta(horas_anio)
+        return horas_dia, horas_mes, horas_anio
 
     except Exception as e:
-        raise ValueError(f"Error al procesar datos por operador: {e}")
+        raise ValueError(f"Error al procesar horas por operador: {e}")
