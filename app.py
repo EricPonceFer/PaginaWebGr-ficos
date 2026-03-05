@@ -2,15 +2,19 @@ import streamlit as st
 from core.data_loader import load_file, procesar_por_operador
 from core.validator import validate_columns
 from core.chart_factory import create_chart
-import plotly.graph_objects as go
-import locale
 from datetime import datetime
-from plotly.subplots import make_subplots
 
 def configure_page():
     """Configura la página."""
     st.set_page_config(page_title="GRAFICAS", layout="wide")
-    st.title("📊 Diseñador de Gráficas Dinámicas")
+    st.markdown(
+    """
+    <h1 style='text-align: center; font-size: 40px; color: #fffff;'>
+        📊 Monitor de Rendimiento Operativo: Asistencia vs. Producción
+    </h1>
+    """, 
+    unsafe_allow_html=True
+)
 
 
 def render_uploader():
@@ -19,39 +23,44 @@ def render_uploader():
 
 
 def render_preview(df):
-    """Muestra vista previa del DataFrame."""
-    st.subheader("Vista previa")
-    st.dataframe(df)
+    """Muestra vista previa del DataFrame dentro de un desplegable."""
+    # El parámetro expanded=False hace que aparezca cerrado por defecto
+    with st.expander("VISTA PREVIA DATOS", expanded=False):
+        st.dataframe(df, use_container_width=True)
 
 
 def render_chart_controls(df):
 
-    col1, col2 = st.columns(2)
+    with st.container(border=True):
+        st.markdown("<h3 style='color: #00000;'>⚙️ Configuración</h3>", unsafe_allow_html=True)
+        
+        col1, col2, col3 = st.columns(3)
 
-    with col1:
-        fecha_seleccionada = st.date_input(
-            "Selecciona la fecha",
-            value=datetime.today()
-        )
+        with col1:
+            # Usamos ** para negritas en el label
+            fecha_seleccionada = st.date_input(
+                "**📅 Selecciona la fecha**", 
+                value=datetime.today()
+            )
 
-    with col2:
-        chart_type = st.selectbox(
-            "Tipo de gráfica",
-            ["Línea", "Barra", "Dispersión"]
-        )
-
+        with col2:
+            chart_type = st.selectbox(
+                "**📈 Tipo de gráfica**",
+                ["Barra", "Línea", "Dispersión"]
+            )
+            
+        with col3:
+            tipo_archivo = st.selectbox(
+                "**📁 Tipo de archivo**",
+                ["Asistencia", "Producción"]
+            )
     # 🔹 Extraer año, mes y día
     anio = fecha_seleccionada.year
     mes = fecha_seleccionada.month
     dia = fecha_seleccionada.day
 
     # 🔹 Pasar esos valores a tu función
-    data_dia, data_mes, data_anio = procesar_por_operador(
-        df,
-        anio,
-        mes,
-        dia
-    )
+    data_dia, data_mes, data_anio = procesar_por_operador(df,anio,mes,dia)
 
     return data_dia, data_mes, data_anio, chart_type
 
@@ -91,15 +100,15 @@ def render_chart(data_dia, data_mes, data_anio,chart_type):
     # 🔹 Selección dinámica del DataFrame
     if modo == "Día":
         df = data_dia.copy()
-        horas_objetivo = 8  # puedes cambiarlo
+        horas_objetivo = 8
 
     elif modo == "Mes":
         df = data_mes.copy()
-        horas_objetivo = 160  # ejemplo: 22 días laborales
+        horas_objetivo = 160 
 
     else:
         df = data_anio.copy()
-        horas_objetivo = 1920  # ejemplo anual
+        horas_objetivo = 1920 
 
     if df.empty:
         st.warning("No hay datos para mostrar")
@@ -113,16 +122,12 @@ def render_chart(data_dia, data_mes, data_anio,chart_type):
 
 
     # 🔹 Crear gráfico
-    fig = create_chart(chart_type   , df,horas_objetivo)
+    fig = create_chart(chart_type, df,horas_objetivo)
     with col2:
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True,theme=None)
 
 
 def main():
-    try:
-        locale.setlocale(locale.LC_TIME, 'Spanish_Spain')
-    except:
-        pass
     configure_page()
 
     uploaded_file = render_uploader()
